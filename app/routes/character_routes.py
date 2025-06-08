@@ -3,6 +3,11 @@ from ..db import db
 from ..models.character import Character
 from ..models.greeting import Greeting
 from sqlalchemy import func, union, except_
+from ..models.utilities import generate_greetings
+import google.generativeai as genai
+import os
+
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 bp = Blueprint("characters", __name__, url_prefix="/characters")
 
@@ -42,14 +47,38 @@ def get_characters():
 
 @bp.get("/<char_id>/greetings")
 def get_greetings(char_id):
-    pass
+    character = validate_model(Character, char_id)
+    
+    if not character.greetings:
+        return {"message": f"No greetings found for {character.name} "}, 201
+    
+    response = {"Character Name" : character.name,
+                "Greetings" : []}
+    for greeting in character.greetings:
+        response["Greetings"].append({
+            "greeting" : greeting.greeting_text
+        })
+    
+    return response
+
 
 @bp.post("/<char_id>/generate")
 def add_greetings(char_id):
-    pass
+    character = validate_model(Character, char_id)
+    greetings_texts = generate_greetings(character)
 
-def generate_greetings(character):
-    pass
+    if character.greetings:
+        return {"message" : f"Greetings for {character.name} already generated: {character.greetings}"}
+    
+    greetings_instances_list = []
+    for text in greetings_texts:
+        new_greeting = Greeting(greeting_text=text, character=character)
+        greetings_instances_list.append(new_greeting)
+
+    db.session.add_all(greetings_instances_list)
+    db.session.commit()
+
+    return {"message" : f"Greetings for {character.name} successfully generated!"}, 201
 
 def validate_model(cls,id):
     try:
